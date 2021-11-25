@@ -19,6 +19,8 @@ A su vez, fue necesario instalar los paquetes python3-pip y python3-dev para uti
 El programa de prueba consiste en un simple script que lee los datos del sensor y los muestra por consola. Se realizan lecturas cada 5 segundos.
 Un detalle que fue descubierto es que dicho sensor es propenso a fallas al leer, sin importar del tiempo de espera entre lecturas. Por lo tanto, se utilizó una funcion especial de la libreria de Adafruit, la cual realiza 15 lecturas sucesivas en intervalos de 2 segundos hasta obtener una lectura valida. Esto reduce la probabilidad de obtener una lectura erronea.
 
+https://learn.adafruit.com/dht-humidity-sensing-on-raspberry-pi-with-gdocs-logging/python-setup
+
 las librerias necesarias para la ejecucion del script son Adafruit_DHT y time. Raspbian, por defecto, no trae instalado el manejador de paquetes de python, pip. Por lo tanto, se recomienda proceder con los siguientes comandos antes de correr el script.
 
     sudo apt-get install python3-dev python3-pip
@@ -27,3 +29,27 @@ las librerias necesarias para la ejecucion del script son Adafruit_DHT y time. R
 
 El programa de prueva consiste en el siguiente script:
 
+```python
+
+import Adafruit_DHT
+import time
+
+DATA_PIN = 3
+SENSOR = Adafruit_DHT.DHT11
+
+while True:
+
+    humidity, temperature = Adafruit_DHT.read_retry(SENSOR, DATA_PIN)
+
+    if ((temperature != None)) and ((humidity != None)):
+        print("Temperatura={0:0.1f}ºC | Humedad={1:0.1f}%HR".format(temperature, humidity))
+    else:
+        print("Falla de lectura. Reintentando...")
+
+    time.sleep(5)
+
+```
+
+El mismo se encuentra dentro del archivo dht11_sensor_test.py, dentro del directorio dht11_sensor. Si se decea probarlo, copiar el script dentro de la Raspberry Pi que posea el sensor conectado y simplemente correr el mismo dentro del directorio donde se encuentre guardado mediante el comando:
+
+    python3 dht11_sensor_test.py
