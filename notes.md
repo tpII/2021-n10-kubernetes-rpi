@@ -119,3 +119,5 @@ Creada la imagen, procedemos a probarla dentro de un contenedor.
     docker container run --rm --privileged rpi_dht11_sensor:v1
 
 Notece el parametro `--privileged` para que el contenedor pueda acceder a los dispositivos de la raspberry pi. Esto es necesario para poder utilizar los pines GPIO. De todas fomras, no es recomendable utilizar este parametro en un contenedor de forma general.
+
+Docker Privileged: https://phoenixnap.com/kb/docker-privileged
