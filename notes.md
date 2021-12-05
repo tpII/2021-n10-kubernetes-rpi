@@ -121,3 +121,52 @@ Creada la imagen, procedemos a probarla dentro de un contenedor.
 Notece el parametro `--privileged` para que el contenedor pueda acceder a los dispositivos de la raspberry pi. Esto es necesario para poder utilizar los pines GPIO. De todas fomras, no es recomendable utilizar este parametro en un contenedor de forma general.
 
 Docker Privileged: https://phoenixnap.com/kb/docker-privileged
+
+## Pagia web con Flask
+
+Teniendo nuestro sensor funcionando, procedemos a crear una pagina web que muestre los datos del sensor. Para ello, utilizaremos la librería Flask.
+
+    pip3 install Flask
+
+Luego, aplicamos algunas modificaciónes a nuestro script para que sea ejecutable como una aplicación web.
+
+    nano dht11_sensor_test.py
+
+```python
+# import the Flask class from the flask module
+from flask import Flask, render_template
+import Adafruit_DHT
+
+DATA_PIN = 3
+SENSOR = Adafruit_DHT.DHT11
+
+# create the application object
+app = Flask(__name__)
+
+# use decorators to link the function to a url
+@app.route('/')
+def home():
+    humidity, temperature = Adafruit_DHT.read_retry(SENSOR, DATA_PIN)
+
+    if ((temperature != None)) and ((humidity != None)):
+        return("Temperatura={0:0.1f}ºC | Humedad={1:0.1f}%HR".format(temperature, humidity))
+    else:
+        return("Falla de lectura. Reintentando...")
+
+@app.route('/welcome')
+def welcome():
+    return render_template('welcome.html')  # render a template
+
+# start the server with the 'run()' method
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
+```
+
+Luego simplemente corremos el script.
+
+    python3 dht11_sensor_test.py
+
+Nos dirigimos a un navegador web y colocamos la dirección de nuestra pagina web.
+
+    {ip_nodo_host}:5000
