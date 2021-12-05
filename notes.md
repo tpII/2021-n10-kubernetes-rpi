@@ -53,3 +53,69 @@ while True:
 El mismo se encuentra dentro del archivo dht11_sensor_test.py, dentro del directorio dht11_sensor. Si se decea probarlo, copiar el script dentro de la Raspberry Pi que posea el sensor conectado y simplemente correr el mismo dentro del directorio donde se encuentre guardado mediante el comando:
 
     python3 dht11_sensor_test.py
+
+## Corriendo el script en un contenedor
+
+Para utilizar dicho script con docker, primero debemos crear una imagen. Y antes de ello, debemos crear un dockerfile para especificar como crearla.
+
+Tambien hay que tener en cuenta que, como el script debe correrse en una raspberry pi, y la imagen va a tener un SO para una arquitectura ARM como es la de nuestra SBC, lo mas eficiente es crear directamente la imagen desde la raspberry pi.
+
+Primero, creamos dentro del mismo directorio donde se encuentra el script.
+
+    touch dockerfile
+
+utilizamos nano para poder editar el archivo.
+
+    nano dockerfile
+
+Y en el mismo colocamos.
+
+```dockerfile
+FROM arm32v7/python:3.7.12-buster
+
+COPY dht11_sensor_test.py ./
+
+RUN apt-get update && apt-get install -y python3-pip rpi-gpio
+
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+RUN pip3 install Adafruit_DHT
+
+CMD [ "python 3", "DHT11_sensor_test.py" ]
+
+
+```
+
+Corriendo pruebas, nos dimos cuenta que, para funcionar en contenedores de forma adecuada, debemos hacerle una pequeña modificacion a nuestro script.
+El mismo funciona, sin embargo, dentro del contenedor, los mensajes de print no se muestran hasta detener el script. Esto se debe a como maneja python los buffers de salida. Por lo tanto, debemos agregar el parametro "flush=True" al print, para que funcione de forma correcta.
+
+El script quedaría asi:
+
+```python
+import Adafruit_DHT
+import time
+
+DATA_PIN = 3
+SENSOR = Adafruit_DHT.DHT11
+
+for i in range(0, 10):
+
+    humidity, temperature = Adafruit_DHT.read_retry(SENSOR, DATA_PIN)
+
+    if ((temperature != None)) and ((humidity != None)):
+        print("Temperatura={0:0.1f}ºC | Humedad={1:0.1f}%HR".format(temperature, humidity, flush=True))
+    else:
+        print("Falla de lectura. Reintentando...", flush=True)
+
+    time.sleep(5)
+```
+
+Una vez creado nuestro dockerfile y modificado el script, podemos crear la imagen.
+
+    docker build -t rpi_dht11_sensor:v1 .
+
+Creada la imagen, procedemos a probarla dentro de un contenedor.
+
+    docker container run --rm --privileged rpi_dht11_sensor:v1
+
+Notece el parametro `--privileged` para que el contenedor pueda acceder a los dispositivos de la raspberry pi. Esto es necesario para poder utilizar los pines GPIO. De todas fomras, no es recomendable utilizar este parametro en un contenedor de forma general.
