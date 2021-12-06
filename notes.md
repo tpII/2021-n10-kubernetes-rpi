@@ -3,7 +3,7 @@ Para las pruebas con el sensor, se decidió ejecutar directamente sobre la placa
 El sensor utilizado es el DHT11, que es un sensor de temperatura y humedad.
 La placa elegida para correr el script es la misma que utilizaremos como worker en el cluster.
 
-https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf
+<https://www.mouser.com/datasheet/2/758/DHT11-Technical-Data-Sheet-Translated-Version-1143054.pdf>
 
 Se trata de un sensor que puede medir temperaturas en un rango de 0ºC a 50ºC con una precision de ±2ºC y humedades en un rango de 20%HR a 90%HR con una precision de ±5%HR. La resolución minima en ambos casos es de 1ºC y 1%HR respectivamente.
 
@@ -11,7 +11,7 @@ HR = Humedad Relativa
 
 En su paquete original, el sensor requiere de una resistencia de pull up de al rededor de 5k en el pin de datos para funcionar. Sin embargo, la version que nosotros poseemos es la de un modulo que ya cuenta con dicha resistencia, mas un capacitor de desacople ubicado en el pin de alimentación para prevenir fallas por cambios bruzcos en la alimentación (filtro pasa-bajos).
 
-http://tutorialesdeelectronicabasica.blogspot.com/2021/03/que-es-el-condensador-de.html
+<http://tutorialesdeelectronicabasica.blogspot.com/2021/03/que-es-el-condensador-de.html>
 
 Para conectarlo, se utilizaron los pines 4 (5V PWR) y 6 (GND) para alimentación, y 5 (GPIO 3) para la transmision de datos.
 A su vez, fue necesario instalar los paquetes python3-pip y python3-dev para utilzar el modulo.
@@ -19,7 +19,7 @@ A su vez, fue necesario instalar los paquetes python3-pip y python3-dev para uti
 El programa de prueba consiste en un simple script que lee los datos del sensor y los muestra por consola. Se realizan lecturas cada 5 segundos.
 Un detalle que fue descubierto es que dicho sensor es propenso a fallas al leer, sin importar del tiempo de espera entre lecturas. Por lo tanto, se utilizó una funcion especial de la libreria de Adafruit, la cual realiza 15 lecturas sucesivas en intervalos de 2 segundos hasta obtener una lectura valida. Esto reduce la probabilidad de obtener una lectura erronea.
 
-https://learn.adafruit.com/dht-humidity-sensing-on-raspberry-pi-with-gdocs-logging/python-setup
+<https://learn.adafruit.com/dht-humidity-sensing-on-raspberry-pi-with-gdocs-logging/python-setup>
 
 las librerias necesarias para la ejecucion del script son Adafruit_DHT y time. Raspbian, por defecto, no trae instalado el manejador de paquetes de python, pip. Por lo tanto, se recomienda proceder con los siguientes comandos antes de correr el script.
 
@@ -120,9 +120,9 @@ Creada la imagen, procedemos a probarla dentro de un contenedor.
 
 Notece el parametro `--privileged` para que el contenedor pueda acceder a los dispositivos de la raspberry pi. Esto es necesario para poder utilizar los pines GPIO. De todas fomras, no es recomendable utilizar este parametro en un contenedor de forma general.
 
-Docker Privileged: https://phoenixnap.com/kb/docker-privileged
+Docker Privileged: <https://phoenixnap.com/kb/docker-privileged>
 
-## Pagia web con Flask
+## Pagia web del sensor con Flask
 
 Teniendo nuestro sensor funcionando, procedemos a crear una pagina web que muestre los datos del sensor. Para ello, utilizaremos la librería Flask.
 
@@ -153,10 +153,6 @@ def home():
     else:
         return("Falla de lectura. Reintentando...")
 
-@app.route('/welcome')
-def welcome():
-    return render_template('welcome.html')  # render a template
-
 # start the server with the 'run()' method
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
@@ -170,3 +166,29 @@ Luego simplemente corremos el script.
 Nos dirigimos a un navegador web y colocamos la dirección de nuestra pagina web.
 
     {ip_nodo_host}:5000
+
+A continuación, metemos nuestro nuevo script en una imagen de docker. Para ello, editamos un dockerfile.
+
+    nano dockerfile
+
+```dockerfile
+FROM arm32v7/python:3.7.12-buster
+
+COPY flask_dht11_sensor_test.py ./
+
+RUN apt-get update && apt-get install -y python3-pip rpi.gpio
+
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+RUN pip3 install Adafruit_DHT Flask
+
+CMD [ "python3", "flask_dht11_sensor_test.py" ]
+```
+
+Luego, creamos la imagen.
+
+    docker build -t flask_dht11:v1 .
+
+Una vez terminada, corremos un contenedor en docker para probarla. En este caso, cambiaremos
+
+    docker container run --rm --privileged -p 4000:5000 flask_dht11:v1
