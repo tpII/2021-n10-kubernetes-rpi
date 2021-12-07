@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: sensor
+    namespace: default
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            app: sensor
+    template:
+        metadata:
+            labels:
+                app: sensor
+        spec:
+            containers:
+                - name: flask-dht11-rpi
+                  image: alcaolpg/flask-dht11-rpi:latest
+                  ports:
+                    - containerPort: 5000
+                      protocol: TCP
+                  securityContext:
+                      privileged: true
+            nodeSelector:
+                dhtsensor: "yes"
