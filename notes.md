@@ -60,6 +60,8 @@ Para utilizar dicho script con docker, primero debemos crear una imagen. Y antes
 
 Tambien hay que tener en cuenta que, como el script debe correrse en una raspberry pi, y la imagen va a tener un SO para una arquitectura ARM como es la de nuestra SBC, lo mas eficiente es crear directamente la imagen desde la raspberry pi.
 
+Dockerfile Reference: https://docs.docker.com/engine/reference/builder/
+
 Primero, creamos dentro del mismo directorio donde se encuentra el script.
 
     touch dockerfile
@@ -118,13 +120,19 @@ Creada la imagen, procedemos a probarla dentro de un contenedor.
 
     docker container run --rm --privileged rpi_dht11_sensor:v1
 
-Notece el parametro `--privileged` para que el contenedor pueda acceder a los dispositivos de la raspberry pi. Esto es necesario para poder utilizar los pines GPIO. De todas fomras, no es recomendable utilizar este parametro en un contenedor de forma general.
+Notece el parametro `--privileged` para que el contenedor pueda acceder a los dispositivos de la raspberry pi. Esto es necesario para poder utilizar los pines GPIO.  
+Existen dos formas basicamente de lograr esto. Una es eligiendo el dispositivo, reemplazando la sentencia `--privileged` por `--devices /dev/gpiomem`. Esta ultima forma es la mas recomendada para estos casos, ya que simplemente comparte con el contenedor el dispositivo fisico del host. Sin embargo, las limitaciones de la imagen base impidieron que la imagen final pueda acceder al archivo correspondiente a dicho dispositivo. `/dev/gpiomem`, incluso habiendo modificado los grupos del sistema y de la imagen como es debido. Concluimos que el problema puede deberse a que no utilizamos una imagen base con la arquitectura provista por raspbian, sino una basada en debian.
+El metodo de `--privileged` dió buenos resultados, funcionando de forma automatica. De todas fomras, no es recomendable utilizar este parametro en un contenedor de forma general. Esto suele ser una tecnica insegura y una practica desaconsejada, ya que el contenedor correrá mas cerca del sistema operativo del host, perdiendo ciertas ventajas de seguridad propias de los contenedores.
+En nuestro caso, dado que nos encontramos en un ambiente controlado y cerrado, podemos darnos el lujo de utilizar el parametro `--privileged`.
 
 Docker Privileged: <https://phoenixnap.com/kb/docker-privileged>
 
 ## Pagia web del sensor con Flask
 
 Teniendo nuestro sensor funcionando, procedemos a crear una pagina web que muestre los datos del sensor. Para ello, utilizaremos la librería Flask.
+
+Fask quick start: https://flask.palletsprojects.com/en/2.0.x/quickstart/
+Flask Tutorial: https://pythonbasics.org/flask-tutorial-hello-world/
 
     pip3 install Flask
 
@@ -174,13 +182,13 @@ A continuación, metemos nuestro nuevo script en una imagen de docker. Para ello
 ```dockerfile
 FROM arm32v7/python:3.7.12-buster
 
-COPY flask_dht11_sensor_test.py ./
-
 RUN apt-get update && apt-get install -y python3-pip rpi.gpio
 
 RUN python3 -m pip install --upgrade pip setuptools wheel
 
 RUN pip3 install Adafruit_DHT Flask
+
+COPY flask_dht11_sensor_test.py ./
 
 CMD [ "python3", "flask_dht11_sensor_test.py" ]
 ```
@@ -192,3 +200,146 @@ Luego, creamos la imagen.
 Una vez terminada, corremos un contenedor en docker para probarla. En este caso, cambiaremos
 
     docker container run --rm --privileged -p 4000:5000 flask_dht11:v1
+
+## Subiendo la imagen a docker hub
+
+Docker hub: https://hub.docker.com/
+Docker hub quickstart: https://docs.docker.com/docker-hub/
+Docker Repositories: https://docs.docker.com/docker-hub/repos/
+
+El tener la imagen creada por nosotros subida a un repositorio en docker hub, permite facilitar el proceso de deployment en otras plataformas, incluyendo el cluster en si.
+
+Para ello, uno debe tener una cuenta en docker hub. Una vez creada, seleccionamos "Create Reopistory" y le damos un nombre. en nuestro caso, llamaremos a nuestro repositorio "flask-dht11-rpi".
+
+A continuanción, cambiamos el tag de la imagen creada por uno que posea todas las caracteristicas estandar para el repositorio.
+
+    docker image tag imagen_fuente:tag_fuente nombre_de_usuario/nombre_repositorio:tag_destino
+
+El tag puede ser el mismo que el tag de la imagen original, o puede ser uno nuevo.
+Por ejemplo, en nuestro caso, el comando quedaría
+
+    docker image tag flask_dht11:v1 alcaolpg/flask-dht11-rpi:latest
+
+Luego, iniciamos sesion y subimos el archivo a docker hub.
+
+    docker login
+
+    docker push nombre_de_usuario/nombre_repositorio:tag_destino
+
+Al finalizar la carga, cerramos sesion.
+
+    docker logout
+
+Imagen subida a docker hub: https://hub.docker.com/repository/docker/alcaolpg/flask-dht11-rpi
+
+## Deployment en el cluster de kubernetes
+
+Al momento de lanzar la aplicación en el cluster, es importante notar que existe un tipo de archivo de vital importancia para el proceso. Los archivos .yaml (Yet Another Markup Language o YAML Ain't Markup Language) son una forma de definir los servicios y los contenedores que se encuentran en el cluster de forma rapida y entendible.
+
+What is YAML?: https://www.redhat.com/en/topics/automation/what-is-yaml
+Understanding Kubernetes Objects: https://kubernetes.io/docs/concepts/overview/working-with-objects/kubernetes-objects/
+
+En nuestro caso, debemos crear un archivo de configuración de contenedores y otro de servicios. El de contenedores se encargará de crear las pods que contienen nuestra aplicación, con todas sus caracteristicas necesarias. El de servicios se encargará de definir un servicio que permita acceder a la aplicación desde el exterior.
+Al igual que con docker, es necesario que la capsula que contenga la aplicación funcione en modo privilegiado.
+
+Pod Security Polices: https://kubernetes.io/docs/concepts/policy/pod-security-policy/#privileged
+Kubernetes Privileged Pod Practical Example: https://www.golinuxcloud.com/kubernetes-privileged-pod-examples/
+
+    nano sensor.yaml
+
+Dentro del mismo, escrivimos:
+
+```yaml
+apiVersion: apps/v1 # Version de Kubernetes para este objeto
+kind: Deployment # Tipo de objeto
+metadata:
+  name: sensor # Nombre del objeto
+  namespace: default # Nombre del espacio de trabajo
+spec:
+  replicas: 1 # Cantidad de pods que se crearan
+  selector:
+    matchLabels:
+      app: sensor # Nombre del contenedor para identificacion de la aplicacion
+  template:
+    metadata:
+      labels:
+        app: sensor # Nombre del contenedor
+    spec:
+      containers:
+        - name: flask-dht11-rpi # Nombre de la aplicacion
+          image: alcaolpg/flask-dht11-rpi:latest # Nombre de la imagen que debe buscarse en docker hub
+          ports:
+            - containerPort: 5000 # Puerto utilizado para comunicarse con la aplicacion
+              protocol: TCP
+          securityContext:
+            privileged: true # Permite que el contenedor acceda a los dispositivos GPIO
+      nodeSelector:
+        dhtsensor: "yes" # Selecciona los nodos que poseen el dispositivo DHT11
+```
+
+Paremonos en la ultima sentencia de la seccion "nodeSelector". En nuestro caso, el sensor se encuentra conectado a una unica placa Raspberry Pi 3B+ mediante GPIO. Por lo tanto, si querémos que el sistema sea capaz de obtener información del sensor, debemos especificar que el nodo debe tener el dispositivo DHT11. Para ello, nos valemos de la posibilidad de usar etiquetas o labels para cada nodo.
+
+Assigning pods to nodes: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
+How to use Node Selectors in Kubernetes: https://www.howtoforge.com/use-node-selectors-in-kubernetes/
+
+Desde el nodo maestro, agregaremos una etiqueta para que el nodo seleccionado por el sistema sea el correcto.
+
+    kubectl label node [nombre del nodo con el sensor] nombre_del_campo_lavel=lavel_a_usar
+
+En nuestro caso, la sentencia anterior quedaría:
+
+    kubectl label node worker1 dhtsensor=yes
+
+Para comprovar la etiqueta, podemos usar el comando:
+
+    kubectl get nodes --show-labels
+
+Creada nuestra etiqueta, procedemos a lanzar la aplicacion en el cluster.
+
+    kubectl apply -f sensor.yaml
+
+Podemos ver los resultados en la consola de kubernetes.
+
+    kubectl get pods -o wide
+
+Para poder acceder a la aplicación, todavia debemos crear el servicio que se encargue de redireccionar las solicitudes del exterior al contenedor de la apliacion. Este tipo de servicio se llama "nodeport".
+
+    nano sensor_nodeport.yaml
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: sensor-nodeport # Nombre del servicio
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: sensor # Nombre del contenedor que identfica a la aplicacion
+  ports:
+    - port: 5000 # Puerto utilizado para comunicarse con la aplicacion
+      targetPort: 5000 # Puerto del contenedor de la aplicacion
+      nodePort: 30001 # Puerto utilizado para acceder al contenedor desde el exterior
+```
+
+Una vez que creamos el servicio, podemos lanzarlo en el cluster.
+
+    kubectl apply -f sensor_nodeport.yaml
+
+Podemos comprovar que el servicio esté corriendo utilizando:
+
+        kubectl get services
+
+Por ultimo, accedemos desde el exterior al contenedor de la aplicacion. Desde una computadora dentro de la misma red, accedemos utilizando la direccion ip de cualquier nodo del cluster desde un navegador web.
+
+    http://[ip del nodo]:30001
+
+En caso de querer eliminar el servicio o el contenedor, podemos hacerlo con los comandos:
+
+    kubectl delete pod [nombre del contenedor]
+
+    kubectl delete deployment [nombre del contenedor]
+
+    kubectl delete service [nombre del servicio]
+
+Removing data collector Docker container / Kubernetes pod: https://www.ibm.com/docs/en/cloud-paks/cp-management/2.3.x?topic=monitoring-removing-data-collector-docker-container-kubernetes-pod
